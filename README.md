@@ -5,7 +5,7 @@ POST data that looks like this:
 
     {
       "title": "a gracious exchange",
-        "messages": [
+      "messages": [
         {
           "user": "alligator",
           "message": "toot toot",
