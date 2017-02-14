@@ -7,7 +7,7 @@ app = Flask(__name__)
 def create():
   data = request.json
   title = data['title'] if 'title' in data else ''
-  resp = make_response(comic.comic(title, data['messages']))
+  resp = make_response(comic.comic(data['messages'], title=title))
   resp.headers['Content-Type'] = 'image/jpeg'
   return resp
 
@@ -48,7 +48,7 @@ def test():
       },
     ]
   }
-  resp = make_response(comic.comic(data['title'], data['messages']))
+  resp = make_response(comic.comic(data['messages'], title=data['title']))
   resp.headers['Content-Type'] = 'image/jpeg'
   return resp
 

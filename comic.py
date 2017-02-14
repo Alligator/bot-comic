@@ -12,86 +12,18 @@ from PIL import Image, ImageDraw, ImageFont
 panelheight = 300
 panelwidth = 450
 
-def modifycomic(inp, filename, bot):
-  img = Image.open(filename)
-  split = inp.startswith('split')
-  # strip split from the input
-  if split:
-    inp = inp[6:]
-  if inp:
-    # crop the panels and paste them into a new image, ez
-    panels = map(int, inp.split(','))
-    new = Image.new("RGBA", (panelwidth, panelheight * len(panels)), (0xff, 0xff, 0xff, 0xff))
-    for i, panel in enumerate(panels):
-      p = img.crop((0, (panel-1) * panelheight, panelwidth, panel * panelheight))
-      new.paste(p, (0, i * panelheight))
-    img = new
-
-  def post(img):
-    fname = str(uuid.uuid4()) + '.jpg'
-    img.save(os.path.join(savepath, fname), quality=86)
-    return "http://irc.alligatr.co.uk/homero/" + fname
-
-  if split:
-    height = img.size[1]
-    height3 = panelheight*3
-    if height < height3:
-      # dont be dumb
-      return post(img)
-    else:
-      out = ''
-      for y in range(0, height, height3):
-        if (y + height3) < height:
-          # 3 panels remaining
-          remaining = height3
-        else:
-          # < 3 panels remaining
-          remaining = panelheight * ((height - y)/panelheight)
-        new = Image.new("RGBA", (panelwidth, remaining))
-        new.paste(img.crop((0, y, panelwidth, y + remaining)), (0, 0))
-        out += post(new) + ' '
-      return out
-  else:
-    return post(img)
-
-def lastcomic(inp, bot=None, chan=None):
-  ".lastcomic [split] [panel1,panel2,panel3...] - crop the last comic to selected panels. if no panels are given it just uploads the comic to imgur. split splits it into 3 panel high images"
-  # ok lets do this
-  # dont be a dumb and try this with no comic
-  if chan in ccache:
-    return modifycomic(inp, ccache[chan], bot)
-  else:
-    return 'no last comic'
-
-def randcomic(inp, bot=None, chan=None):
-  files = filter(lambda x: chan.replace('#', '') in x, os.listdir('/var/www/homero/'))
-  if len(files) > 0:
-    f = os.path.join('/var/www/homero/', choice(files))
-    return modifycomic(inp, f, bot)
-  else:
-    return 'no comics found'
-
-def comic(title, msgs):
-    sp = 0
+def comic(msgs, title=''):
+    # create a unique list of the users
     chars = set([x['user'] for x in msgs])
-    # for i in xrange(len(msgs)-1, 0, -1):
-    #     sp += 1
-    #     diff = datetime.fromtimestamp(msgs[i]['timestamp']) - datetime.fromtimestamp(msgs[i-1]['timestamp'])
-    #     chars.add(msgs[i]['user'])
-    #     if sp > 10 or diff.total_seconds() > 120 or len(chars) > 5:
-    #         break
-    #
-    # print msgs
-    # msgs = msgs[-1*sp:]
-    # print msgs
 
     panels = []
     panel = []
 
     for m in msgs:
-        d = m['timestamp']
         char = m['user']
         msg = m['message']
+        # if the panel already has 2 message or the next message is by the same
+        # person, we append it to the panels list and start a new one
         if len(panel) == 2 or len(panel) == 1 and panel[0][0] == char:
             panels.append(panel)
             panel = []
@@ -100,22 +32,22 @@ def comic(title, msgs):
 
     b = io.BytesIO()
     if len(title) > 0:
-      make_comic(chars, panels, title).save(b, 'jpeg', quality=86)
+        make_comic(chars, panels, title).save(b, 'jpeg', quality=86)
     else:
-      make_comic(chars, panels).save(b, 'jpeg', quality=86) 
+        make_comic(chars, panels).save(b, 'jpeg', quality=86) 
     return b.getvalue()
 
+# text wrapping
 def wrap(st, font, draw, width):
-    #print "\n\n\n"
-    st = st.split()
-    mw = 0
-    mh = 0
-    ret = []
+    st = st.split() # split the input into words
+    mw = 0 # the max width we found
+    mh = 0 # the max height we found
+    ret = [] # the split text to return
 
     while len(st) > 0:
         s = 1
-        #print st
-        #import pdb; pdb.set_trace()
+        # keep adding words until either we run out or the current line is
+        # wider than max width
         while True and s < len(st):
             w, h = draw.textsize(" ".join(st[:s]), font=font)
             if w > width:
@@ -124,30 +56,33 @@ def wrap(st, font, draw, width):
             else:
                 s += 1
 
-        if s == 0 and len(st) > 0: # we've hit a case where the current line is wider than the screen
+        # we've hit a case where the current line is wider than the screen.
+        # just draw it
+        if s == 0 and len(st) > 0:
             s = 1
 
         w, h = draw.textsize(" ".join(st[:s]), font=font)
         mw = max(mw, w)
         mh += h
         ret.append(" ".join(st[:s]))
-        #print st[:s]
-        #print
         st = st[s:]
 
     return (ret, (mw, mh))
 
 def rendertext(st, font, draw, pos):
     ch = pos[1]
+    # for each line
     for s in st:
         s = unicode(s)
         w, h = draw.textsize(s, font=font)
         h = int(h)
+        # PIL doesn't do borders, so we draw the text offset in black a bunch of times then on top
+        # of that in white
         for i in range(1,2):
-          draw.text((pos[0]-i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((pos[0]-i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((pos[0]+i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((pos[0]+i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((pos[0]-i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((pos[0]-i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((pos[0]+i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((pos[0]+i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
         draw.text((pos[0], ch), s, font=font, fill=(0xff,0xff,0xff,0xff))
         ch += h
 
@@ -160,13 +95,14 @@ def rendertitle(st, font, draw, pos):
         h = int(h)
         x = (450 - w)/2
         for i in range(1,2):
-          draw.text((x-i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((x-i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((x+i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
-          draw.text((x+i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((x-i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((x-i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((x+i, ch-i), s, font=font, fill=(0x0,0x0,0x0,0x0))
+            draw.text((x+i, ch+i), s, font=font, fill=(0x0,0x0,0x0,0x0))
         draw.text((x, ch), s, font=font, fill=(0xff,0xff,0xff,0xff))
         ch += h
 
+# figures out the best way to fit an image in the given dimensions, preserving the aspect ratio
 def fitimg(img, (width, height)):
     scale1 = float(width) / img.size[0]
     scale2 = float(height) / img.size[1]
@@ -182,26 +118,29 @@ def fitimg(img, (width, height)):
     return img.resize((int(l[0]), int(l[1])), Image.ANTIALIAS)
 
 def make_comic(chars, panels, title=False):
-    #filenames = os.listdir(os.path.join(os.getcwd(), 'chars'))
-
+    # get the list of images. this should really be done on startup, no?
     filenames = os.listdir('comic/chars/')
     shuffle(filenames)
     filenames = map(lambda x: os.path.join('comic/chars', x), filenames[:len(chars)])
+
+    # associate characters with images
     chars = list(chars)
     chars = zip(chars, filenames)
     charmap = dict()
     for ch, f in chars:
+        # support for multiple images per character. if we found a directory
+        # store all of the images in it as the value, else just the one image
         if os.path.isdir(f):
-          charmap[ch] = []
-          for fi in os.listdir(f):
-            charmap[ch].append(Image.open(os.path.join(f, fi)))
+            charmap[ch] = []
+            for fi in os.listdir(f):
+                charmap[ch].append(Image.open(os.path.join(f, fi)))
         else:
-          charmap[ch] = [Image.open(f)]
+            charmap[ch] = [Image.open(f)]
 
     imgwidth = panelwidth
     imgheight = panelheight * len(panels)
     if title:
-      imgheight += panelheight
+        imgheight += panelheight
 
     bg = Image.open(os.path.join('comic/backgrounds', random.choice(os.listdir('comic/backgrounds'))))
 
@@ -209,6 +148,8 @@ def make_comic(chars, panels, title=False):
     font = ImageFont.truetype("comic/COMICBD.TTF", 14)
     titlefont = ImageFont.truetype("comic/COMICBD.TTF", 20)
 
+    # title drawing
+    # see below for useful comments this is basically one iteration of the loop below
     if title:
         pim = Image.new("RGBA", (panelwidth, panelheight), (0xff, 0xff, 0xff, 0xff))
         pim.paste(bg, (0, 0))
@@ -221,15 +162,19 @@ def make_comic(chars, panels, title=False):
         del draw
         im.paste(pim, (0, 0))
 
+    # panel drawing
     for i in xrange(len(panels)):
         pim = Image.new("RGBA", (panelwidth, panelheight), (0xff, 0xff, 0xff, 0xff))
         pim.paste(bg, (0, 0))
         draw = ImageDraw.Draw(pim)
 
+        # text widths for character 1 and 2
         st1w = 0; st1h = 0; st2w = 0; st2h = 0
+        # st = split (wrapped) text
         (st1, (st1w, st1h)) = wrap(panels[i][0][1], font, draw, 2*panelwidth/3.0)
         rendertext(st1, font, draw, (10, 10))
         if len(panels[i]) == 2:
+            # draw the second character's text, if there is one
             (st2, (st2w, st2h)) = wrap(panels[i][1][1], font, draw, 2*panelwidth/3.0)
             rendertext(st2, font, draw, (panelwidth-10-st2w, st1h + 10))
 
@@ -237,23 +182,29 @@ def make_comic(chars, panels, title=False):
         if st2h > 0:
             texth += st2h + 10 + 5
 
+        # figure out where to put the characters so they won't overlap text
         maxch = panelheight - texth
+
+        # draw the first character.random.choice here for multi image support, again
         im1 = fitimg(random.choice(charmap[panels[i][0][0]]), (2*panelwidth/5.0-10, maxch))
         try:
-          pim.paste(im1, (10, panelheight-im1.size[1]), im1)
+            # not sure what this try would catch
+            pim.paste(im1, (10, panelheight-im1.size[1]), im1)
         except Exception, e:
-          print e, st2
+            print e, st2
 
         if len(panels[i]) == 2:
+            # draw the second character
             im2 = fitimg(random.choice(charmap[panels[i][1][0]]), (2*panelwidth/5.0-10, maxch))
             im2 = im2.transpose(Image.FLIP_LEFT_RIGHT)
             pim.paste(im2, (panelwidth-im2.size[0]-10, panelheight-im2.size[1]), im2)
 
+        # borders
         draw.line([(0, 0), (0, panelheight-1), (panelwidth-1, panelheight-1), (panelwidth-1, 0), (0, 0)], (0, 0, 0, 0xff))
         del draw
         if title:
-          im.paste(pim, (0, panelheight * (i+1)))
+            im.paste(pim, (0, panelheight * (i+1)))
         else:
-          im.paste(pim, (0, panelheight * i))
+            im.paste(pim, (0, panelheight * i))
 
     return im
