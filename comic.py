@@ -7,6 +7,7 @@ import json
 from random import shuffle, choice
 from datetime import datetime
 import uuid 
+import math
 from PIL import Image, ImageDraw, ImageFont
 
 panelheight = 300
@@ -117,6 +118,15 @@ def fitimg(img, (width, height)):
 
     return img.resize((int(l[0]), int(l[1])), Image.ANTIALIAS)
 
+def get_dimensions(panelCount, panelWidth, panelHeight):
+    if panelCount > 4:
+        # panels go like this
+        # [1] [2]
+        # [3] [4]
+        return (panelWidth * 2, int(math.ceil(panelCount / 2.0) * panelHeight), True)
+    else:
+        return (panelWidth, panelHeight * panelCount, False)
+
 def make_comic(chars, panels, title=False):
     # get the list of images. this should really be done on startup, no?
     filenames = os.listdir('comic/chars/')
@@ -137,11 +147,7 @@ def make_comic(chars, panels, title=False):
         else:
             charmap[ch] = [Image.open(f)]
 
-    imgwidth = panelwidth
-    imgheight = panelheight * len(panels)
-    if title:
-        imgheight += panelheight
-
+    imgwidth, imgheight, columns = get_dimensions(len(panels) + 1 if title else 0, panelwidth, panelheight)
     bg = Image.open(os.path.join('comic/backgrounds', random.choice(os.listdir('comic/backgrounds'))))
 
     im = Image.new("RGBA", (imgwidth, imgheight), (0xff, 0xff, 0xff, 0xff))
@@ -202,9 +208,14 @@ def make_comic(chars, panels, title=False):
         # borders
         draw.line([(0, 0), (0, panelheight-1), (panelwidth-1, panelheight-1), (panelwidth-1, 0), (0, 0)], (0, 0, 0, 0xff))
         del draw
-        if title:
-            im.paste(pim, (0, panelheight * (i+1)))
+
+        idx = i + 1 if title else i
+        if columns:
+            # we are drawing 2 columns, figure stuff out
+            xOffset = (idx % 2) * panelwidth
+            yOffset = (idx / 2) * panelheight
+            im.paste(pim, (xOffset, yOffset))
         else:
-            im.paste(pim, (0, panelheight * i))
+            im.paste(pim, (0, panelheight * idx))
 
     return im
