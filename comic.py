@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 panelheight = 300
 panelwidth = 450
 
-def comic(msgs, title=''):
+def comic(msgs, title=None):
     # create a unique list of the users
     chars = set([x['user'] for x in msgs])
 
@@ -32,10 +32,7 @@ def comic(msgs, title=''):
     panels.append(panel)
 
     b = io.BytesIO()
-    if len(title) > 0:
-        make_comic(chars, panels, title).save(b, 'jpeg', quality=86)
-    else:
-        make_comic(chars, panels).save(b, 'jpeg', quality=86) 
+    s = make_comic(chars, panels, title).save(b, 'jpeg', quality=86)
     return b.getvalue()
 
 # text wrapping
@@ -119,6 +116,7 @@ def fitimg(img, (width, height)):
     return img.resize((int(l[0]), int(l[1])), Image.ANTIALIAS)
 
 def get_dimensions(panelCount, panelWidth, panelHeight):
+    print panelCount, panelWidth, panelHeight
     if panelCount > 4:
         # panels go like this
         # [1] [2]
@@ -127,11 +125,12 @@ def get_dimensions(panelCount, panelWidth, panelHeight):
     else:
         return (panelWidth, panelHeight * panelCount, False)
 
-def make_comic(chars, panels, title=False):
+def make_comic(chars, panels, title=None):
     # get the list of images. this should really be done on startup, no?
     filenames = os.listdir('comic/chars/')
     shuffle(filenames)
     filenames = map(lambda x: os.path.join('comic/chars', x), filenames[:len(chars)])
+    hasTitle = title is not None
 
     # associate characters with images
     chars = list(chars)
@@ -147,7 +146,7 @@ def make_comic(chars, panels, title=False):
         else:
             charmap[ch] = [Image.open(f)]
 
-    imgwidth, imgheight, columns = get_dimensions(len(panels) + 1 if title else 0, panelwidth, panelheight)
+    imgwidth, imgheight, columns = get_dimensions(len(panels) + (1 if hasTitle else 0), panelwidth, panelheight)
     bg = Image.open(os.path.join('comic/backgrounds', random.choice(os.listdir('comic/backgrounds'))))
 
     im = Image.new("RGBA", (imgwidth, imgheight), (0xff, 0xff, 0xff, 0xff))
@@ -156,13 +155,15 @@ def make_comic(chars, panels, title=False):
 
     # title drawing
     # see below for useful comments this is basically one iteration of the loop below
-    if title:
+    if hasTitle:
         pim = Image.new("RGBA", (panelwidth, panelheight), (0xff, 0xff, 0xff, 0xff))
         pim.paste(bg, (0, 0))
         draw = ImageDraw.Draw(pim)
         st1w = 0; st1h = 0; st2w = 0; st2h = 0
         (st1, (st1w, st1h)) = wrap(title, titlefont, draw, 2*panelwidth/3.0)
-        rendertitle(st1, titlefont, draw, (10, 10))
+        # handle blank titles
+        if len(st1) > 0:
+            rendertitle(st1, titlefont, draw, (10, 10))
 
         draw.line([(0, 0), (0, panelheight-1), (panelwidth-1, panelheight-1), (panelwidth-1, 0), (0, 0)], (0, 0, 0, 0xff))
         del draw
@@ -209,7 +210,7 @@ def make_comic(chars, panels, title=False):
         draw.line([(0, 0), (0, panelheight-1), (panelwidth-1, panelheight-1), (panelwidth-1, 0), (0, 0)], (0, 0, 0, 0xff))
         del draw
 
-        idx = i + 1 if title else i
+        idx = i + 1 if hasTitle else i
         if columns:
             # we are drawing 2 columns, figure stuff out
             xOffset = (idx % 2) * panelwidth

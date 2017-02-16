@@ -6,7 +6,7 @@ app = Flask(__name__)
 @app.route('/create', methods=['POST'])
 def create():
   data = request.json
-  title = data['title'] if 'title' in data else ''
+  title = data.get('title', None)
   resp = make_response(comic.comic(data['messages'], title=title))
   resp.headers['Content-Type'] = 'image/jpeg'
   return resp
